@@ -31,6 +31,8 @@ struct Network
 	{};
 };
 
+std::string	signalName(int signal);
+
 class Client;
 class Channel;
 

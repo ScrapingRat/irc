@@ -1,5 +1,3 @@
-#include <cstdlib>
-#include <csignal>
 #include <sstream>
 
 #include "../include/Server.hpp"
@@ -49,4 +47,19 @@ void setupAndRunServer(int port, const char *password)
 	server.setPort(port);
 	server.setPass(password);
 	server.run();
+}
+
+std::string	signalName(int signal)
+{
+	switch (signal)
+	{
+		case SIGINT:
+			return "SIGINT";
+		case SIGQUIT:
+			return "SIGQUIT";
+		case SIGUSR1:
+			return "SIGUSR1";
+		default:
+			return "UNKNOWN";
+	}
 }

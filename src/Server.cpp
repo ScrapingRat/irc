@@ -14,6 +14,7 @@
 #define INFO_OPEN_CONNECTIONS "Info: open connections: " << _pollfds.size() - 1 << std::endl
 #define INFO_RECEIVED_MESSAGE(fd, msg) "Info: Received message from client, fd: " << fd << ", message: " << msg << std::endl
 #define INFO_SENT_MESSAGE(fd, msg) "Info: Sent message to client, fd: " << fd << ", message: " << msg
+#define SIG_CAUGHT_MSG(signal) "Signal caught: " << signalName(signal) << " (" << signal << ")" << std::endl
 #define BUFFER_SIZE 512
 
 Server::Server()
@@ -195,6 +196,8 @@ void	Server::addClient(void)
 	_clients.push_back(client);
 }
 
+
+
 void Server::signalHandler(int signal)
 {
 	switch (signal)
@@ -202,7 +205,7 @@ void Server::signalHandler(int signal)
 		case SIGINT:
 		case SIGQUIT:
 		case SIGUSR1:
-			std::cerr << "Signal caught: " << signal << std::endl;
+			std::cerr << SIG_CAUGHT_MSG(signal);
 			shutdown_signal = true;
 			break;
 		default:
