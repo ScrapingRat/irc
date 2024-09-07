@@ -61,7 +61,7 @@ release:		$(NAME)
 DEBUG			:= 0
 
 ifeq ($(DEBUG), 1)
-	CPPFLAGS 	+= -g3
+	CPPFLAGS	+= -g3
 	CXX			:= g++
 endif
 
