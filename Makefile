@@ -5,24 +5,24 @@ NAME 			:= ircserv
 CXX				:= g++
 CPPFLAGS		:= -Wall -Werror -Wextra -std=c++98
 CPPFLAGS		+= -I./include
-DEPFLAGS        := -MMD -MP
+DEPFLAGS		:= -MMD -MP
 
 # Directories
-SRC_DIR 		:= ./src
-OBJ_DIR 		:= ./obj
+SRC_DIR			:= ./src
+OBJ_DIR			:= ./obj
 
 # Source files
-ROOT_SRC 		:= \
+ROOT_SRC		:= \
 				Server.cpp \
 				Channel.cpp \
 				Client.cpp \
 				ServerInit.cpp \
 				main.cpp
-ROOT_DIR 		:= $(SRC_DIR)
-ROOT_OBJ 		:= $(addprefix $(OBJ_DIR)/, $(ROOT_SRC:.cpp=.o))
+ROOT_DIR		:= $(SRC_DIR)
+ROOT_OBJ		:= $(addprefix $(OBJ_DIR)/, $(ROOT_SRC:.cpp=.o))
 
 # Combine all source files and object files
-SRC 			:= \
+SRC				:= \
 				$(ROOT_SRC)
 OBJ				:= \
 				$(ROOT_OBJ)
@@ -61,7 +61,7 @@ release:		$(NAME)
 DEBUG			:= 0
 
 ifeq ($(DEBUG), 1)
-    CPPFLAGS 	+= -g3
+	CPPFLAGS 	+= -g3
 	CXX			:= g++
 endif
 
