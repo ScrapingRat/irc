@@ -61,12 +61,12 @@ release:		$(NAME)
 DEBUG			:= 0
 
 ifeq ($(DEBUG), 1)
-    CPPFLAGS += -g3
-	CXX := g++
+    CPPFLAGS 	+= -g3
+	CXX			:= g++
 endif
 
 # Phony targets
-.PHONY: all clean debug fclean re release
+.PHONY:			all clean debug fclean re release
 
 # Include dependency files
 -include $(OBJ:.o=.d)
