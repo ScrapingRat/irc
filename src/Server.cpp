@@ -22,6 +22,7 @@ Server::Server()
 	signal(SIGINT, Server::signalHandler);
 	signal(SIGQUIT, Server::signalHandler);
 	signal(SIGUSR1, Server::signalHandler);
+	signal(SIGPIPE, SIG_IGN);
 	try
 	{
 		initNetwork();
@@ -67,6 +68,21 @@ bool	Server::sendMsg(int fd, const char *msg)
 		ssize_t ret = send(fd, msg + bytes_sent, len - bytes_sent, 0);
 		if (ret < 0)
 		{
+			if (errno == EPIPE)
+			{
+				std::cerr << INFO_CLIENT_DISCONNECTED(fd);
+				close(fd);
+				for (pollfd_it it = _pollfds.begin(); it != _pollfds.end(); ++it)
+				{
+					if (it->fd == fd)
+					{
+						_pollfds.erase(it);
+						break;
+					}
+				}
+				std::cout << INFO_OPEN_CONNECTIONS;
+				return true;
+			}
 			std::cerr << ERR_SEND_MESSAGE(fd, msg);
 			return false;
 		}
@@ -86,7 +102,7 @@ void	Server::acceptNewConnection(void)
         return;
     }
 
-	if (_pollfds.size() > 1)
+	if (_pollfds.size() > 10)
 	{
 		std::cerr << ERR_MAX_CONNECTIONS;
 		bool msg_sent = false;
