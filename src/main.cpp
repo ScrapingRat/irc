@@ -43,9 +43,9 @@ int parsePort(const char *portStr)
 
 void setupAndRunServer(int port, const char *password)
 {
-	Server server;
-	server.setPort(port);
-	server.setPass(password);
+	Server server(port, password);
+	// server.setPort(port);
+	// server.setPass(password);
 	server.run();
 }
 

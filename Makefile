@@ -16,7 +16,8 @@ ROOT_SRC		:= \
 				Server.cpp \
 				Channel.cpp \
 				Client.cpp \
-				ServerInit.cpp \
+				NetworkInitializer.cpp \
+				utils.cpp \
 				main.cpp
 ROOT_DIR		:= $(SRC_DIR)
 ROOT_OBJ		:= $(addprefix $(OBJ_DIR)/, $(ROOT_SRC:.cpp=.o))

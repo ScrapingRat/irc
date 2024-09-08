@@ -3,6 +3,8 @@
 #include <csignal>
 
 #include "../include/Server.hpp"
+#include "../include/utils.hpp"
+#include "../include/ShutdownManager.hpp"
 
 #define ERR_ACCEPT_CONNECTION(fd) "Error: Failed to accept new connection on fd: " << fd << " (" << strerror(errno) << ")" << std::endl
 #define ERR_MAX_CONNECTIONS "Error: Maximum number of connections reached" << std::endl
@@ -11,13 +13,14 @@
 #define ERR_CLOSE_CLIENT(fd) "Error: Failed to close client, fd: " << fd << " (" << strerror(errno) << ")" << std::endl
 #define INFO_CLIENT_DISCONNECTED(fd) "Info: Client disconnected, fd: " << fd << std::endl
 #define INFO_CLIENT_CONNECTED(fd) "Info: New connection accepted on fd: " << fd << std::endl
-#define INFO_OPEN_CONNECTIONS "Info: open connections: " << _pollfds.size() - 1 << std::endl
+#define INFO_OPEN_CONNECTIONS "Info: open connections: " << _network.pollfds.size() - 1 << std::endl
 #define INFO_RECEIVED_MESSAGE(fd, msg) "Info: Received message from client, fd: " << fd << ", message: " << msg << std::endl
 #define INFO_SENT_MESSAGE(fd, msg) "Info: Sent message to client, fd: " << fd << ", message: " << msg
 #define SIG_CAUGHT_MSG(signal) "Signal caught: " << signalName(signal) << " (" << signal << ")" << std::endl
 #define BUFFER_SIZE 512
+#define PFD _network.pollfds
 
-Server::Server()
+Server::Server(int port, const std::string &pass)
 {
 	signal(SIGINT, Server::signalHandler);
 	signal(SIGQUIT, Server::signalHandler);
@@ -25,21 +28,21 @@ Server::Server()
 	signal(SIGPIPE, SIG_IGN);
 	try
 	{
-		initNetwork();
+		_network.port = port;
+		_network.pass = pass;
+		_network.initialize();
 	}
 	catch(const std::exception &e)
 	{
 		std::cerr << "Network initialization failed: ";
-		shutdown_signal = true;
+		ShutdownManager::getInstance().setShutdownSignal(true);
 		throw;
 	}
 }
 
-bool	Server::shutdown_signal = false;
-
 Server::~Server()
 {
-	for (pollfd_it it = _pollfds.begin(); it != _pollfds.end(); it++)
+	for (pollfd_it it = PFD.begin(); it != PFD.end(); it++)
 	{
 		if (it->fd != _network.fd)
 		{
@@ -51,10 +54,8 @@ Server::~Server()
 					msg_sent = true;
 			}
 		}
-		if (close(it->fd) == 0)
-			std::cout << INFO_CLIENT_DISCONNECTED(it->fd);
-		else
-			std::cerr << ERR_CLOSE_CLIENT(it->fd);
+		closeClient(it->fd);
+		std::cout << INFO_OPEN_CONNECTIONS;
 	}
 	std::cout << "Shutting down server gracefully" << std::endl;
 }
@@ -70,13 +71,12 @@ bool	Server::sendMsg(int fd, const char *msg)
 		{
 			if (errno == EPIPE)
 			{
-				std::cerr << INFO_CLIENT_DISCONNECTED(fd);
-				close(fd);
-				for (pollfd_it it = _pollfds.begin(); it != _pollfds.end(); ++it)
+				closeClient(fd);
+				for (pollfd_it it = PFD.begin(); it != PFD.end(); ++it)
 				{
 					if (it->fd == fd)
 					{
-						_pollfds.erase(it);
+						PFD.erase(it);
 						break;
 					}
 				}
@@ -102,7 +102,7 @@ void	Server::acceptNewConnection(void)
         return;
     }
 
-	if (_pollfds.size() > 10)
+	if (PFD.size() > 10)
 	{
 		std::cerr << ERR_MAX_CONNECTIONS;
 		bool msg_sent = false;
@@ -111,27 +111,26 @@ void	Server::acceptNewConnection(void)
 			if (sendMsg(new_fd, "Server is full\n"))
 				msg_sent = true;
 		}
-		std::cout << INFO_CLIENT_DISCONNECTED(new_fd);
-		close(new_fd);
+		closeClient(new_fd);
 		return;
 	}
 
     pollfd pfd = { new_fd, POLLIN, 0 };
-    _pollfds.push_back(pfd);
+    PFD.push_back(pfd);
 	std::cout << INFO_CLIENT_CONNECTED(new_fd);
 	std::cout << INFO_OPEN_CONNECTIONS;
 }
 
 void	Server::handlePollin(void)
 {
-	for (pollfd_it it = _pollfds.begin(); it != _pollfds.end();)
+	for (pollfd_it it = PFD.begin(); it != PFD.end();)
 	{
 		if (it->revents & POLLIN)
 		{
 			if (it->fd == _network.fd)
 			{
 				acceptNewConnection();
-				it = _pollfds.begin() + 1;
+				it = PFD.begin() + 1;
 			}
 			else
 				it = handleClientMessage(it);
@@ -147,14 +146,10 @@ Server::pollfd_it	Server::handleClientMessage(pollfd_it pfd)
 	int	bytes_read = recv(pfd->fd, buffer, BUFFER_SIZE, 0);
 	if (bytes_read <= 0)
 	{
-		if (bytes_read == 0)
-		{
-			std::cerr << INFO_CLIENT_DISCONNECTED(pfd->fd);
-		}
-		else
+		if (bytes_read < 0)
 			std::cerr << ERR_READ_CLIENT(pfd->fd) << std::endl;
-		close(pfd->fd);
-		pfd = _pollfds.erase(pfd);
+		closeClient(pfd->fd);
+		pfd = PFD.erase(pfd);
 		std::cout << INFO_OPEN_CONNECTIONS;
 	}
 	else
@@ -169,7 +164,7 @@ Server::pollfd_it	Server::handleClientMessage(pollfd_it pfd)
 
 void	Server::handlePollout(void)
 {
-	for (pollfd_it it = _pollfds.begin(); it != _pollfds.end(); ++it)
+	for (pollfd_it it = PFD.begin(); it != PFD.end(); ++it)
 	{
 		if (it->revents & POLLOUT)
 		{
@@ -181,9 +176,9 @@ void	Server::handlePollout(void)
 
 void	Server::run(void)
 {
-	while (!shutdown_signal)
+	while (!ShutdownManager::getInstance().getShutdownSignal())
 	{
-		int	ret = poll(&_pollfds[0], _pollfds.size(), -1);
+		int	ret = poll(&PFD[0], PFD.size(), -1);
 		if (ret < 0)
 		{
 			if (errno == EINTR)
@@ -196,23 +191,11 @@ void	Server::run(void)
 	}
 }
 
-void	Server::setPort(int port)
-{
-	_network.port = port;
-}
-
-void	Server::setPass(std::string pass)
-{
-	_network.pass = pass;
-}
-
 void	Server::addClient(void)
 {
 	Client	client;
 	_clients.push_back(client);
 }
-
-
 
 void Server::signalHandler(int signal)
 {
@@ -222,7 +205,7 @@ void Server::signalHandler(int signal)
 		case SIGQUIT:
 		case SIGUSR1:
 			std::cerr << SIG_CAUGHT_MSG(signal);
-			shutdown_signal = true;
+			ShutdownManager::getInstance().setShutdownSignal(true);
 			break;
 		default:
 			std::cerr << "Unhandled signal caught: " << signal << std::endl;
