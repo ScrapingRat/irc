@@ -27,6 +27,10 @@ class Server
 		std::vector<Channel>	_channels;
 		NetworkInitializer		_network;
 
+		// Server initialization
+		void					initializeNetwork(int port, const std::string &pass);
+		void					setupSignalHandlers(void);
+
 		// Polling
 		void					handlePollin(void);
 		void					handlePollout(void);
@@ -35,10 +39,10 @@ class Server
 
 		// Server shutdown
 		static void				signalHandler(int signum);
-		void					shutdown(void);
 
 		// Message sending
 		bool 					sendMsg(int fd, const char *msg);
+		void					handleBrokenPipe(int fd);
 
 	public:
 		Server(int port, const std::string &pass);
@@ -49,6 +53,8 @@ class Server
 
 		// Client management
 		void					addClient(void);
+		void					handleMaxConnections(int fd);
+		void					addNewConnection(int fd);
 };
 
 #endif

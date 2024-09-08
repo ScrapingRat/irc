@@ -23,26 +23,13 @@
 
 Server::Server(int port, const std::string &pass)
 {
-	signal(SIGINT, Server::signalHandler);
-	signal(SIGQUIT, Server::signalHandler);
-	signal(SIGUSR1, Server::signalHandler);
-	signal(SIGPIPE, SIG_IGN);
-	try
-	{
-		_network.port = port;
-		_network.pass = pass;
-		_network.initialize();
-	}
-	catch(const std::exception &e)
-	{
-		ShutdownManager::getInstance().setShutdownSignal(true);
-		throw;
-	}
+	setupSignalHandlers();
+	initializeNetwork(port, pass);
 }
 
 Server::~Server()
 {
-	for (pollfd_it it = PFD.begin(); it != PFD.end(); it++)
+	for (pollfd_it it = PFD.begin(); it != PFD.end(); ++it)
 	{
 		if (it->fd != _network.fd)
 		{
@@ -60,10 +47,48 @@ Server::~Server()
 	std::cout << "Shutting down server gracefully" << std::endl;
 }
 
+void	Server::setupSignalHandlers(void)
+{
+	signal(SIGINT, Server::signalHandler);
+	signal(SIGQUIT, Server::signalHandler);
+	signal(SIGUSR1, Server::signalHandler);
+	signal(SIGPIPE, SIG_IGN);
+}
+
+void	Server::initializeNetwork(int port, const std::string &pass)
+{
+	try
+	{
+		_network.port = port;
+		_network.pass = pass;
+		_network.initialize();
+	}
+	catch(const std::exception &e)
+	{
+		ShutdownManager::getInstance().setShutdownSignal(true);
+		throw;
+	}
+}
+
+void	Server::handleBrokenPipe(int fd)
+{
+	closeClient(fd);
+	for (pollfd_it it = PFD.begin(); it != PFD.end(); ++it)
+	{
+		if (it->fd == fd)
+		{
+			PFD.erase(it);
+			break;
+		}
+	}
+	std::cout << INFO_OPEN_CONNECTIONS;
+}
+
 bool	Server::sendMsg(int fd, const char *msg)
 {
 	size_t len = strlen(msg);
 	ssize_t bytes_sent = 0;
+
 	while (static_cast<size_t>(bytes_sent) < len)
 	{
 		ssize_t ret = send(fd, msg + bytes_sent, len - bytes_sent, 0);
@@ -71,16 +96,7 @@ bool	Server::sendMsg(int fd, const char *msg)
 		{
 			if (errno == EPIPE)
 			{
-				closeClient(fd);
-				for (pollfd_it it = PFD.begin(); it != PFD.end(); ++it)
-				{
-					if (it->fd == fd)
-					{
-						PFD.erase(it);
-						break;
-					}
-				}
-				std::cout << INFO_OPEN_CONNECTIONS;
+				handleBrokenPipe(fd);
 				return true;
 			}
 			std::cerr << ERR_SEND_MESSAGE(fd, msg);
@@ -92,6 +108,18 @@ bool	Server::sendMsg(int fd, const char *msg)
 	return true;
 }
 
+void Server::handleMaxConnections(int fd)
+{
+    std::cerr << ERR_MAX_CONNECTIONS;
+    bool msg_sent = false;
+    while (!msg_sent)
+    {
+        if (sendMsg(fd, "Server is full\n"))
+            msg_sent = true;
+    }
+    closeClient(fd);
+}
+
 void	Server::acceptNewConnection(void)
 {
     int new_fd = accept(_network.fd, (struct sockaddr *)&_network.sa_storage, &_network.sa_len);
@@ -99,24 +127,21 @@ void	Server::acceptNewConnection(void)
     if (new_fd < 0)
     {
 		std::cerr << ERR_ACCEPT_CONNECTION(_network.fd) << std::endl;
-        return;
     }
-
-	if (PFD.size() > MAX_CONNECTIONS)
+	else if (PFD.size() > MAX_CONNECTIONS)
 	{
-		std::cerr << ERR_MAX_CONNECTIONS;
-		bool msg_sent = false;
-		while (!msg_sent)
-		{
-			if (sendMsg(new_fd, "Server is full\n"))
-				msg_sent = true;
-		}
-		closeClient(new_fd);
-		return;
+		handleMaxConnections(new_fd);
 	}
+	else
+	{
+		addNewConnection(new_fd);
+	}
+}
 
-    pollfd pfd = { new_fd, POLLIN, 0 };
-    PFD.push_back(pfd);
+void	Server::addNewConnection(int new_fd)
+{
+	pollfd pfd = { new_fd, POLLIN, 0 };
+	PFD.push_back(pfd);
 	std::cout << INFO_CLIENT_CONNECTED(new_fd);
 	std::cout << INFO_OPEN_CONNECTIONS;
 }
