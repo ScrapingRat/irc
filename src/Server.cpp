@@ -31,20 +31,20 @@ Server::~Server()
 {
 	for (pollfd_it it = PFD.begin(); it != PFD.end(); ++it)
 	{
-		if (it->fd != _network.fd)
-		{
-			bool msg_sent = false;
-			it->events = POLLOUT;
-			while (!msg_sent)
-			{
-				if (sendMsg(it->fd, "Server shutting down\n"))
-					msg_sent = true;
-			}
-		}
-		closeClient(it->fd);
-		std::cout << INFO_OPEN_CONNECTIONS;
+		handlePollfdClose(*it);
 	}
 	std::cout << "Shutting down server gracefully" << std::endl;
+}
+
+void Server::handlePollfdClose(pollfd pfd)
+{
+	if (pfd.fd != _network.fd)
+	{
+		pfd.events = POLLOUT;
+		sendMsg(pfd.fd, "Server shutting down\n");
+	}
+	closeClient(pfd.fd);
+	std::cout << INFO_OPEN_CONNECTIONS;
 }
 
 void	Server::setupSignalHandlers(void)
@@ -84,6 +84,22 @@ void	Server::handleBrokenPipe(int fd)
 	std::cout << INFO_OPEN_CONNECTIONS;
 }
 
+bool	Server::msgNotSent(int fd, const char *msg)
+{
+	if (errno == EWOULDBLOCK)
+	{
+		std::cerr << "Send would block, message not sent" << std::endl;
+		return true;
+	}
+	if (errno == EPIPE)
+	{
+		handleBrokenPipe(fd);
+		return true;
+	}
+	std::cerr << ERR_SEND_MESSAGE(fd, msg);
+	return false;
+}
+
 bool	Server::sendMsg(int fd, const char *msg)
 {
 	size_t len = strlen(msg);
@@ -94,13 +110,7 @@ bool	Server::sendMsg(int fd, const char *msg)
 		ssize_t ret = send(fd, msg + bytes_sent, len - bytes_sent, 0);
 		if (ret < 0)
 		{
-			if (errno == EPIPE)
-			{
-				handleBrokenPipe(fd);
-				return true;
-			}
-			std::cerr << ERR_SEND_MESSAGE(fd, msg);
-			return false;
+			return (msgNotSent(fd, msg));
 		}
 		bytes_sent += ret;
 	}
@@ -111,12 +121,7 @@ bool	Server::sendMsg(int fd, const char *msg)
 void Server::handleMaxConnections(int fd)
 {
     std::cerr << ERR_MAX_CONNECTIONS;
-    bool msg_sent = false;
-    while (!msg_sent)
-    {
-        if (sendMsg(fd, "Server is full\n"))
-            msg_sent = true;
-    }
+    sendMsg(fd, "Server is full\n");
     closeClient(fd);
 }
 
@@ -165,26 +170,38 @@ void	Server::handlePollin(void)
 	}
 }
 
-Server::pollfd_it	Server::handleClientMessage(pollfd_it pfd)
+Server::pollfd_it Server::handleReadError(pollfd_it pfd, int bytes_read)
 {
-	char buffer[BUFFER_SIZE + 1];
-	int	bytes_read = recv(pfd->fd, buffer, BUFFER_SIZE, 0);
-	if (bytes_read <= 0)
-	{
-		if (bytes_read < 0)
-			std::cerr << ERR_READ_CLIENT(pfd->fd) << std::endl;
-		closeClient(pfd->fd);
-		pfd = PFD.erase(pfd);
-		std::cout << INFO_OPEN_CONNECTIONS;
-	}
-	else
-	{
-		buffer[bytes_read] = '\0';
-		std::cout << INFO_RECEIVED_MESSAGE(pfd->fd, buffer);
-		pfd->events = POLLOUT;
-		++pfd;
-	}
-	return pfd;
+    if (bytes_read < 0)
+        std::cerr << ERR_READ_CLIENT(pfd->fd) << std::endl;
+    closeClient(pfd->fd);
+    pfd = PFD.erase(pfd);
+    std::cout << INFO_OPEN_CONNECTIONS;
+    return pfd;
+}
+
+Server::pollfd_it Server::processReceivedMessage(pollfd_it pfd, char* buffer, int bytes_read)
+{
+    buffer[bytes_read] = '\0';
+    std::cout << INFO_RECEIVED_MESSAGE(pfd->fd, buffer);
+    pfd->events = POLLOUT;
+    ++pfd;
+    return pfd;
+}
+
+Server::pollfd_it Server::handleClientMessage(pollfd_it pfd)
+{
+    char buffer[BUFFER_SIZE + 1];
+    int bytes_read = recv(pfd->fd, buffer, BUFFER_SIZE, 0);
+    if (bytes_read <= 0)
+    {
+        pfd = handleReadError(pfd, bytes_read);
+    }
+    else
+    {
+        pfd = processReceivedMessage(pfd, buffer, bytes_read);
+    }
+    return pfd;
 }
 
 void	Server::handlePollout(void)
@@ -237,3 +254,11 @@ void Server::signalHandler(int signal)
 			break;
 	}
 }
+
+// void	Server::forEachPollfd(void (Server::*function)(pollfd pfd))
+// {
+// 	for (pollfd_it it = PFD.begin(); it != PFD.end(); ++it)
+// 	{
+// 		(this->*function)(*it);
+// 	}
+// }

@@ -36,12 +36,15 @@ class Server
 		void					handlePollout(void);
 		void					acceptNewConnection(void);
 		pollfd_it 				handleClientMessage(pollfd_it it);
+		pollfd_it				handleReadError(pollfd_it it, int bytes_read);
+		pollfd_it				processReceivedMessage(pollfd_it it, char *buffer, int bytes_read);
 
 		// Server shutdown
 		static void				signalHandler(int signum);
 
 		// Message sending
 		bool 					sendMsg(int fd, const char *msg);
+		bool					msgNotSent(int fd, const char *msg);
 		void					handleBrokenPipe(int fd);
 
 	public:
@@ -55,6 +58,9 @@ class Server
 		void					addClient(void);
 		void					handleMaxConnections(int fd);
 		void					addNewConnection(int fd);
+		void					handlePollfdClose(pollfd pfd);
+
+		// void					forEachPollfd(void (Server::*function)(pollfd pfd));
 };
 
 #endif
