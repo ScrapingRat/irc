@@ -18,6 +18,7 @@
 #define INFO_SENT_MESSAGE(fd, msg) "Info: Sent message to client, fd: " << fd << ", message: " << msg
 #define SIG_CAUGHT_MSG(signal) "Signal caught: " << signalName(signal) << " (" << signal << ")" << std::endl
 #define BUFFER_SIZE 512
+#define MAX_CONNECTIONS 10
 #define PFD _network.pollfds
 
 Server::Server(int port, const std::string &pass)
@@ -101,7 +102,7 @@ void	Server::acceptNewConnection(void)
         return;
     }
 
-	if (PFD.size() > 10)
+	if (PFD.size() > MAX_CONNECTIONS)
 	{
 		std::cerr << ERR_MAX_CONNECTIONS;
 		bool msg_sent = false;
