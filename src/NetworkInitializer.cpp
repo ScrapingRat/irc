@@ -6,8 +6,10 @@ class NetworkException : public std::runtime_error
 	public:
 		explicit NetworkException(const std::string &message)
 		:
-		std::runtime_error(message) {}
+		std::runtime_error("Network initialization failed: " + message) {}
 };
+
+const int BACKLOG = 20;
 
 NetworkInitializer::NetworkInitializer()
 	:
@@ -21,7 +23,11 @@ NetworkInitializer::NetworkInitializer(int port, const std::string &pass)
 	pass(pass)
 {}
 
-NetworkInitializer::~NetworkInitializer() {}
+NetworkInitializer::~NetworkInitializer()
+{
+	if (fd != -1)
+		close(fd);
+}
 
 void NetworkInitializer::initialize(void)
 {
@@ -33,7 +39,6 @@ void NetworkInitializer::initialize(void)
 		bindSocket();
 		listenSocket();
 		initPoll();
-		status = 0;
 	}
 	catch (const NetworkException &e)
 	{
@@ -64,8 +69,7 @@ void NetworkInitializer::setNonBlocking(void)
 {
 	if (fcntl(fd, F_SETFL, O_NONBLOCK) == -1)
 	{
-		close(fd);
-		throw NetworkException("Failed to set socket to non-blocking");
+		closeSocketWithError("Failed to set socket to non-blocking");
 	}
 }
 
@@ -74,31 +78,34 @@ void NetworkInitializer::bindSocket(void)
 	int opt = 1;
 	if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
 	{
-		close(fd);
-		throw NetworkException("Failed to set socket options");
+		closeSocketWithError("Failed to set socket options");
 	}
 
-	status = bind(fd, (struct sockaddr *)&sa_in, sizeof(sa_in));
-	if (status < 0)
+	if (bind(fd, (struct sockaddr *)&sa_in, sizeof(sa_in)) < 0)
 	{
-		close(fd);
-		throw NetworkException("Failed to bind socket");
+		closeSocketWithError("Failed to bind socket");
 	}
 }
 
 void NetworkInitializer::listenSocket(void)
 {
-	status = listen(fd, 20);
-	if (status < 0)
+	if (listen(fd, BACKLOG) < 0)
 	{
-		close(fd);
-		throw NetworkException("Failed to listen on socket");
+		closeSocketWithError("Failed to listen on socket");
 	}
 	sa_len = sizeof(sa_storage);
 }
 
 void NetworkInitializer::initPoll(void)
 {
+	pollfds.clear();
 	pollfd pfd = { fd, POLLIN, 0 };
 	pollfds.push_back(pfd);
+}
+
+void NetworkInitializer::closeSocketWithError(const std::string &message)
+{
+	std::cerr << message << ": " << std::strerror(errno) << std::endl;
+	close(fd);
+	throw NetworkException(message);
 }

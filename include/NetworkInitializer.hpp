@@ -2,6 +2,8 @@
 #define NETWORK_INITIALIZER_HPP
 
 #include <arpa/inet.h>
+#include <cerrno>
+#include <cstring>
 #include <fcntl.h>
 #include <iostream>
 #include <poll.h>
@@ -18,6 +20,7 @@ class NetworkInitializer
 		void						bindSocket(void);
 		void						listenSocket(void);
 		void						initPoll(void);
+		void 						closeSocketWithError(const std::string &message);
 
 	public:
 		std::vector<pollfd>			pollfds;
@@ -25,7 +28,6 @@ class NetworkInitializer
 		struct	sockaddr_storage	sa_storage;
 		socklen_t					sa_len;
 		int							fd;
-		int							status;
 		int							port;
 		std::string					pass;
 
@@ -36,4 +38,4 @@ class NetworkInitializer
 		void						initialize(void);
 };
 
-#endif
+#endif // NETWORK_INITIALIZER_HPP

@@ -34,7 +34,6 @@ Server::Server(int port, const std::string &pass)
 	}
 	catch(const std::exception &e)
 	{
-		std::cerr << "Network initialization failed: ";
 		ShutdownManager::getInstance().setShutdownSignal(true);
 		throw;
 	}

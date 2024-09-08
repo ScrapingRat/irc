@@ -1,6 +1,16 @@
 #ifndef UTILS_HPP
 #define UTILS_HPP
 
-void	closeClient(int fd);
+#include <cerrno>
+#include <csignal>
+#include <cstdlib>
+#include <cstring>
+#include <iostream>
+#include <sstream>
 
-#endif
+int			parsePort(const char *portStr);
+std::string	signalName(int signal);
+void		closeClient(int fd);
+void		validateArguments(int ac, char **av);
+
+#endif // UTILS_HPP
